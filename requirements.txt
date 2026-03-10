@@ -1,0 +1,11 @@
+requests
+pandas
+spacy
+spotipy
+transformers
+scikit-learn
+plotly
+streamlit
+torch
+
+# NOTE: run python -m spacy download en_core_web_sm after installing all the libraries!!
