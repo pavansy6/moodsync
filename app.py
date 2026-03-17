@@ -1,60 +1,36 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import os
+from src.model import AcousticMoodRecommender
 
-from src.model import MusicRecommender
-
-st.set_page_config(page_title="MoodSync Recommender", layout="wide")
-st.title("MoodSync: Hugging Face Semantic Search")
-st.markdown("Type out how you are feeling. Our AI will semantically match your mood to the vibe of 15,000 popular tracks.")
+st.set_page_config(page_title="MoodSync: Acoustic Engine", layout="wide")
+st.title("MoodSync: Acoustic Math Engine")
 
 @st.cache_resource
-def load_recommender():
-    return MusicRecommender(dataset_path="data/dataset.csv") 
+def load_system():
+    return AcousticMoodRecommender("data/strict_clean.csv")
 
-try:
-    with st.spinner("Loading AI model and encoding music database... (This takes about a minute on startup)"):
-        recommender = load_recommender()
-except FileNotFoundError:
-    st.error("Could not find data/dataset.csv.")
-    st.stop()
+with st.spinner("Spinning up the Acoustic Math Engine..."):
+    recommender = load_system()
 
-# --- USER INPUT ---
-user_text = st.text_area("How are you feeling right now?", "I feel totally exhausted and just want to lay in bed.", height=100)
+user_text = st.text_area("How are you feeling?", "I am incredibly angry and need to break something.")
 
-if st.button("Find my Soundtrack", type="primary"):
-    with st.spinner('Calculating semantic similarity...'):
+if st.button("Calculate Soundtrack", type="primary"):
+    with st.spinner("Processing emotional vectors..."):
         
-        # Get Recommendations
-        recommendations = recommender.recommend(user_text, top_k=5)
+        # Run the engine
+        recommendations, raw_emotions = recommender.recommend(user_text, top_k=5)
         
-        # --- UI LAYOUT ---
-        st.subheader("Top Matches based on Semantic Similarity")
+        col1, col2 = st.columns([1, 2])
         
-        # Format the dataframe for clean display
-        display_df = recommendations[['track_name', 'artists', 'track_genre', 'similarity_score', 'vibe_description']].copy()
-        display_df['similarity_score'] = (display_df['similarity_score'] * 100).round(1).astype(str) + "%"
-        
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
-
-        # Visualization in Acoustic Space
-        st.divider()
-        st.subheader("Where Your Recommendations Live")
-        
-        fig_scatter = px.scatter(
-            recommendations, 
-            x='valence', 
-            y='energy', 
-            hover_name='track_name', 
-            hover_data=['artists', 'vibe_description'],
-            color='similarity_score',
-            color_continuous_scale='Viridis',
-            size_max=15,
-            template='plotly_dark'
-        )
-        fig_scatter.update_traces(marker=dict(size=14))
-        fig_scatter.update_xaxes(range=[0, 1], title="Valence (Sad -> Happy)")
-        fig_scatter.update_yaxes(range=[0, 1], title="Energy (Calm -> Intense)")
-        
-        st.plotly_chart(fig_scatter, use_container_width=True)
+        with col1:
+            st.subheader("Psychological Profile")
+            emo_df = pd.DataFrame(raw_emotions).rename(columns={'label': 'Emotion', 'score': 'Probability'})
+            fig_bar = px.bar(emo_df, x='Emotion', y='Probability', template='plotly_dark')
+            st.plotly_chart(fig_bar, use_container_width=True)
+            
+        with col2:
+            st.subheader("Acoustic Matches")
+            display_df = recommendations[['track_name', 'artists', 'match_accuracy', 'valence', 'energy']]
+            display_df['match_accuracy'] = display_df['match_accuracy'].astype(str) + "%"
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
