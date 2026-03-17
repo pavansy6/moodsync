@@ -6,44 +6,56 @@ import os
 
 class MusicRecommender:
     def __init__(self, dataset_path="data/dataset.csv"):
-        print("Loading Kaggle database and Hugging Face model...")
+        # Define paths for our cached artifacts
+        self.embeddings_path = "data/track_embeddings.npy"
+        self.df_path = "data/filtered_tracks.pkl"
         
-        # 1. Load the dataset
-        self.df = pd.read_csv(dataset_path, low_memory=False)
-        self.df.columns = self.df.columns.str.lower()
-        
-        # 2. Filter data for performance and quality
-        # We only take the most popular 15,000 tracks to keep embedding times reasonable on a CPU
-        if 'popularity' in self.df.columns:
-            self.df = self.df[self.df['popularity'] > 40].copy()
-        self.df = self.df.head(15000).reset_index(drop=True)
-        
-        # Drop rows with missing values
-        self.df = self.df.dropna(subset=['valence', 'energy', 'track_name', 'artists'])
-        
-        # 3. Generate "Vibe Descriptions" for each track
-        print("Synthesizing track descriptions...")
-        self.df['vibe_description'] = self.df.apply(self._generate_vibe_text, axis=1)
-        
-        # 4. Load the Hugging Face Sentence Transformer
-        # This model is specifically optimized for semantic similarity matching
+        # Always load the model first
+        print("Loading Hugging Face model...")
         self.model = SentenceTransformer('all-MiniLM-L6-v2')
         
-        # 5. Pre-compute the embeddings for all tracks
-        print("Encoding track embeddings (this may take 30-60 seconds on first run)...")
-        self.track_embeddings = self.model.encode(self.df['vibe_description'].tolist(), show_progress_bar=True)
+        # Check if we have already generated and cached the embeddings
+        if os.path.exists(self.embeddings_path) and os.path.exists(self.df_path):
+            print("Found cached artifacts. Loading embeddings and dataframe from disk...")
+            self.df = pd.read_pickle(self.df_path)
+            self.track_embeddings = np.load(self.embeddings_path)
+            print(f"Successfully loaded {len(self.df)} tracks instantly.")
+            
+        else:
+            print("No cache found. Processing Kaggle database and generating embeddings...")
+            
+            # 1. Load the raw dataset
+            self.df = pd.read_csv(dataset_path, low_memory=False)
+            self.df.columns = self.df.columns.str.lower()
+            
+            # 2. Filter data for performance and quality
+            if 'popularity' in self.df.columns:
+                self.df = self.df[self.df['popularity'] > 40].copy()
+            self.df = self.df.head(15000).reset_index(drop=True)
+            self.df = self.df.dropna(subset=['valence', 'energy', 'track_name', 'artists'])
+            
+            # 3. Generate "Vibe Descriptions"
+            print("Synthesizing track descriptions...")
+            self.df['vibe_description'] = self.df.apply(self._generate_vibe_text, axis=1)
+            
+            # 4. Pre-compute the embeddings
+            print("Encoding track embeddings (this will take 30-60 seconds)...")
+            self.track_embeddings = self.model.encode(self.df['vibe_description'].tolist(), show_progress_bar=True)
+            
+            # 5. Cache the artifacts to disk for future runs
+            print("Saving artifacts to disk...")
+            self.df.to_pickle(self.df_path)
+            np.save(self.embeddings_path, self.track_embeddings)
+            print("Caching complete!")
 
     def _generate_vibe_text(self, row):
-        """Translates acoustic math back into descriptive text for the AI to read."""
         v = row['valence']
         e = row['energy']
         
-        # Valence labels
         if v > 0.7: mood = "happy, joyful, and positive"
         elif v < 0.3: mood = "sad, melancholic, and emotional"
         else: mood = "neutral and balanced"
             
-        # Energy labels
         if e > 0.7: intensity = "highly energetic, loud, and intense"
         elif e < 0.3: intensity = "calm, slow, and relaxing"
         else: intensity = "moderately paced"
