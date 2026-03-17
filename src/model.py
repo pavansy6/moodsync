@@ -1,58 +1,69 @@
 import pandas as pd
 import numpy as np
-from sklearn.neighbors import NearestNeighbors
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+import os
 
 class MusicRecommender:
     def __init__(self, dataset_path="data/dataset.csv"):
-        print("Loading Kaggle database...")
-        # Load the dataset
+        print("Loading Kaggle database and Hugging Face model...")
+        
+        # 1. Load the dataset
         self.df = pd.read_csv(dataset_path, low_memory=False)
         self.df.columns = self.df.columns.str.lower()
         
-        # Drop rows with missing values in our target columns
-        self.feature_cols = ['valence', 'energy', 'danceability', 'acousticness']
-        self.df = self.df.dropna(subset=self.feature_cols + ['track_name', 'artists'])
+        # 2. Filter data for performance and quality
+        # We only take the most popular 15,000 tracks to keep embedding times reasonable on a CPU
+        if 'popularity' in self.df.columns:
+            self.df = self.df[self.df['popularity'] > 40].copy()
+        self.df = self.df.head(15000).reset_index(drop=True)
         
-        # Fit the K-Nearest Neighbors model
-        self.knn = NearestNeighbors(n_neighbors=10, metric='euclidean')
-        self.knn.fit(self.df[self.feature_cols])
+        # Drop rows with missing values
+        self.df = self.df.dropna(subset=['valence', 'energy', 'track_name', 'artists'])
+        
+        # 3. Generate "Vibe Descriptions" for each track
+        print("Synthesizing track descriptions...")
+        self.df['vibe_description'] = self.df.apply(self._generate_vibe_text, axis=1)
+        
+        # 4. Load the Hugging Face Sentence Transformer
+        # This model is specifically optimized for semantic similarity matching
+        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        
+        # 5. Pre-compute the embeddings for all tracks
+        print("Encoding track embeddings (this may take 30-60 seconds on first run)...")
+        self.track_embeddings = self.model.encode(self.df['vibe_description'].tolist(), show_progress_bar=True)
 
-    def emotion_to_audio_features(self, emotion_vector):
-        """
-        Maps HuggingFace emotions (Joy, Sadness, Anger, etc.) to target Spotify features.
-        """
-        # Define baseline acoustic profiles for pure emotions
-        profiles = {
-            'joy':     {'valence': 0.85, 'energy': 0.80, 'danceability': 0.75, 'acousticness': 0.10},
-            'sadness': {'valence': 0.15, 'energy': 0.20, 'danceability': 0.30, 'acousticness': 0.85},
-            'anger':   {'valence': 0.20, 'energy': 0.90, 'danceability': 0.40, 'acousticness': 0.05},
-            'fear':    {'valence': 0.30, 'energy': 0.50, 'danceability': 0.40, 'acousticness': 0.50},
-            'neutral': {'valence': 0.50, 'energy': 0.50, 'danceability': 0.50, 'acousticness': 0.50}
-        }
+    def _generate_vibe_text(self, row):
+        """Translates acoustic math back into descriptive text for the AI to read."""
+        v = row['valence']
+        e = row['energy']
+        
+        # Valence labels
+        if v > 0.7: mood = "happy, joyful, and positive"
+        elif v < 0.3: mood = "sad, melancholic, and emotional"
+        else: mood = "neutral and balanced"
+            
+        # Energy labels
+        if e > 0.7: intensity = "highly energetic, loud, and intense"
+        elif e < 0.3: intensity = "calm, slow, and relaxing"
+        else: intensity = "moderately paced"
+            
+        genre = str(row.get('track_genre', 'music'))
+        
+        return f"A {mood} {genre} track. It is {intensity}."
 
-        # Calculate a weighted average of features based on the user's emotion scores
-        target_features = {feature: 0.0 for feature in self.feature_cols}
+    def recommend(self, user_text, top_k=5):
+        # 1. Convert the user's emotional text into a vector
+        user_embedding = self.model.encode([user_text])
         
-        for emotion, weight in emotion_vector.items():
-            if emotion in profiles:
-                for feature in self.feature_cols:
-                    target_features[feature] += profiles[emotion][feature] * weight
-                    
-        return target_features
-
-    def recommend(self, emotion_vector, top_k=5):
-        # 1. Get the ideal acoustic features for the user's mood
-        target = self.emotion_to_audio_features(emotion_vector)
-        target_array = np.array([[target['valence'], target['energy'], target['danceability'], target['acousticness']]])
+        # 2. Calculate cosine similarity between the user text and all track descriptions
+        similarities = cosine_similarity(user_embedding, self.track_embeddings)[0]
         
-        # 2. Find the closest matching songs in the Kaggle dataset
-        distances, indices = self.knn.kneighbors(target_array, n_neighbors=top_k)
+        # 3. Get the top K matching indices
+        top_indices = np.argsort(similarities)[::-1][:top_k]
         
-        # 3. Retrieve the song data
-        recommendations = self.df.iloc[indices[0]].copy()
-        
-        # Add the target coordinates to the output so we can see what the model aimed for
-        recommendations['target_valence'] = target['valence']
-        recommendations['target_energy'] = target['energy']
+        # 4. Return the recommended rows
+        recommendations = self.df.iloc[top_indices].copy()
+        recommendations['similarity_score'] = similarities[top_indices]
         
         return recommendations
