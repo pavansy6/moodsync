@@ -7,8 +7,8 @@ plotly
 streamlit>=1.30
 altair>=5
 
-torch==2.2.2
-transformers==4.41.2
-spacy==3.7.4
+torch
+transformers
+spacy
 
 # NOTE: run python -m spacy download en_core_web_sm after installing all the libraries!!
