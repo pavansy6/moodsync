@@ -1,74 +1,38 @@
 import pandas as pd
 import os
-from langdetect import detect, DetectorFactory
-from langdetect.lang_detect_exception import LangDetectException
-from tqdm import tqdm
 
-# Ensure consistent results from langdetect
-DetectorFactory.seed = 0
-
-# Enable progress bar for pandas apply
-tqdm.pandas()
-
-def is_english(text):
-    """Safely attempts to detect if a string is English."""
-    try:
-        # We only return True if the detected language is English
-        return detect(str(text)) == 'en'
-    except LangDetectException:
-        # If it's just punctuation, numbers, or unreadable, discard it
-        return False
-
-def main():
-    input_file = "data/dataset.csv"
-    output_file = "data/cleaned_dataset.csv"
-    
-    print(f"Loading raw dataset from {input_file}...")
-    if not os.path.exists(input_file):
-        print(f"Error: Could not find {input_file}.")
+def clean_dataset(input_path="data/dataset.csv", output_path="data/strict_clean.csv"):
+    print("Loading raw Kaggle data...")
+    if not os.path.exists(input_path):
+        print(f"Error: Place your Kaggle dataset at {input_path}")
         return
 
-    df = pd.read_csv(input_file, low_memory=False)
+    df = pd.read_csv(input_path, low_memory=False)
     df.columns = df.columns.str.lower()
+    
     initial_count = len(df)
-    print(f"Initial track count: {initial_count}")
-
-    # --- CLEANING PIPELINE ---
-
-    # 1. Drop rows with missing essential data
-    print("Dropping rows with missing values...")
-    df = df.dropna(subset=['track_name', 'artists', 'valence', 'energy', 'speechiness', 'duration_ms'])
     
-    # 2. Remove Duplicates
-    print("Removing duplicate tracks...")
-    df = df.drop_duplicates(subset=['track_name', 'artists'], keep='first')
+    # 1. Drop missing data
+    df = df.dropna(subset=['track_name', 'artists', 'valence', 'energy', 'tempo', 'danceability', 'acousticness'])
     
-    # 3. Filter out spoken word / audiobooks (speechiness > 0.66 is usually spoken word)
-    print("Filtering out podcasts and audiobooks...")
-    df = df[df['speechiness'] < 0.6]
+    # 2. The ASCII Nuke: Remove ANY row with non-English/non-standard characters
+    print("Purging non-ASCII tracks...")
+    df = df[df['track_name'].astype(str).map(lambda x: x.isascii())]
+    df = df[df['artists'].astype(str).map(lambda x: x.isascii())]
     
-    # 4. Filter duration (Keep tracks between 1 minute and 10 minutes)
-    print("Filtering out tracks that are too short or too long...")
-    # duration_ms is in milliseconds (60000 ms = 1 minute, 600000 ms = 10 minutes)
-    df = df[(df['duration_ms'] >= 60000) & (df['duration_ms'] <= 600000)]
+    # 3. Filter audiobooks/noise and extreme durations
+    if 'speechiness' in df.columns:
+        df = df[df['speechiness'] < 0.5]
+    if 'duration_ms' in df.columns:
+        df = df[(df['duration_ms'] >= 90000) & (df['duration_ms'] <= 420000)] # 1.5 to 7 mins
     
-    # 5. Language Detection (This takes the longest)
-    print("Detecting languages and keeping only English tracks (This may take a few minutes)...")
-    # We apply the detection to the track name
-    df['is_en'] = df['track_name'].progress_apply(is_english)
-    df = df[df['is_en'] == True]
+    # 4. Remove exact duplicates
+    df = df.drop_duplicates(subset=['track_name', 'artists'])
     
-    # Drop the temporary column
-    df = df.drop(columns=['is_en'])
-
-    # --- SAVE ---
     final_count = len(df)
-    print("\n--- Cleaning Complete ---")
-    print(f"Tracks removed: {initial_count - final_count}")
-    print(f"Final clean track count: {final_count}")
-    
-    df.to_csv(output_file, index=False)
-    print(f"Saved clean dataset to {output_file}")
+    print(f"Purged {initial_count - final_count} garbage tracks.")
+    print(f"Saved {final_count} pristine tracks to {output_path}.")
+    df.to_csv(output_path, index=False)
 
 if __name__ == "__main__":
-    main()
+    clean_dataset()

@@ -1,14 +1,8 @@
-requests
 pandas
-spotipy
 scikit-learn
+streamlit
 plotly
-
-streamlit>=1.30
-altair>=5
-
-torch
-transformers
-spacy
+groq
+python-dotenv
 
 # NOTE: run python -m spacy download en_core_web_sm after installing all the libraries!!
