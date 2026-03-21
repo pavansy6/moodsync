@@ -46,7 +46,7 @@ class OnlineMoodRecommender:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_text}
             ],
-            model="llama3-8b-8192",
+            model="llama-3.3-70b-versatile",
             temperature=0.5, # slightly higher temperature for creative song choices
             response_format={"type": "json_object"}
         )
