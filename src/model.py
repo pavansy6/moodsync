@@ -58,7 +58,7 @@ class OnlineMoodRecommender:
         enriched_tracks = []
         
         for item in llm_songs:
-            # search Spotify using the track and artist name
+            # Search Spotify using the track and artist name
             query = f"track:{item['song']} artist:{item['artist']}"
             results = self.spotify.search(q=query, type='track', limit=1)
             
@@ -67,12 +67,12 @@ class OnlineMoodRecommender:
             if tracks:
                 track = tracks[0]
                 enriched_tracks.append({
-                    "title": track['name'],
-                    "artist": track['artists'][0]['name'],
-                    "album_art": track['album']['images'][0]['url'] if track['album']['images'] else None,
-                    "preview_url": track['preview_url'], # The 30-second MP3
-                    "spotify_url": track['external_urls']['spotify'],
-                    "reason": item['reason']
+                    "title": track.get('name', item['song']),
+                    "artist": track['artists'][0]['name'] if track.get('artists') else item['artist'],
+                    "album_art": track['album']['images'][0]['url'] if track.get('album') and track['album'].get('images') else None,
+                    "preview_url": track.get('preview_url'),
+                    "spotify_url": track.get('external_urls', {}).get('spotify', '#'),
+                    "reason": item.get('reason', '')
                 })
                 
         return enriched_tracks
