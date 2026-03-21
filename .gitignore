@@ -7,9 +7,7 @@ __pycache__/
 *.so
 
 # Data
-data/cleaned_dataset.csv
-data/dataset.csv
-data/final_dataset.csv
+data/*.csv
 
 # Distribution / packaging
 .Python

@@ -1,8 +1,6 @@
-pandas
-scikit-learn
 streamlit>=1.30.0
-plotly
 groq
+spotipy
 python-dotenv
 
 # NOTE: run python -m spacy download en_core_web_sm after installing all the libraries!!

@@ -1,45 +1,55 @@
 import streamlit as st
-import pandas as pd
-import plotly.express as px
-import os
-from src.model import AcousticMoodRecommender
+from src.model import OnlineMoodRecommender
 
-st.set_page_config(page_title="MoodSync Recommender", layout="wide")
-st.title("MoodSync: Emotion-to-Acoustic Engine")
-st.markdown("Powered by Llama 3 API and K-Nearest Neighbors.")
+st.set_page_config(page_title="MoodSync V2", layout="centered")
+st.title("🎧 MoodSync: Live Online Engine")
+st.markdown("Powered by Llama 3 & The Live Spotify Catalog")
 
 @st.cache_resource
-def load_system():
-    if not os.path.exists("data/strict_clean.csv"):
-        st.error("Missing data/strict_clean.csv. Run python clean_dataset.py first.")
-        st.stop()
-    return AcousticMoodRecommender("data/strict_clean.csv")
+def load_engine():
+    return OnlineMoodRecommender()
 
-with st.spinner("Initializing Acoustic Math Engine..."):
-    recommender = load_system()
+try:
+    recommender = load_engine()
+except Exception as e:
+    st.error(f"Setup Error: {e}. Please check your .env file.")
+    st.stop()
 
-user_text = st.text_area("How are you feeling?", "I am totally burnt out and just want to lie in the dark.", height=100)
+user_text = st.text_area("How are you feeling right now?", "I feel like driving down an empty highway at midnight.", height=100)
 
-if st.button("Calculate Soundtrack", type="primary"):
-    with st.spinner("Analyzing text via Groq LLM & mapping acoustic vectors..."):
+if st.button("Generate Live Playlist", type="primary"):
+    with st.spinner("Consulting Llama 3 and searching the live Spotify database..."):
         
         try:
-            recommendations, raw_emotions = recommender.recommend(user_text, top_k=5)
+            playlist = recommender.recommend(user_text)
             
-            col1, col2 = st.columns([1, 2])
-            
-            with col1:
-                st.subheader("Extracted Psychological Profile")
-                emo_df = pd.DataFrame(list(raw_emotions.items()), columns=['Emotion', 'Probability'])
-                fig_bar = px.bar(emo_df, x='Emotion', y='Probability', template='plotly_dark')
-                fig_bar.update_layout(margin=dict(l=0, r=0, t=0, b=0), height=300)
-                st.plotly_chart(fig_bar, use_container_width=True)
+            if not playlist:
+                st.warning("Could not find exact matches on Spotify. Try a different mood!")
+            else:
+                st.subheader("Your Custom Soundtrack")
+                st.divider()
                 
-            with col2:
-                st.subheader("Nearest Acoustic Matches")
-                display_df = recommendations[['track_name', 'artists', 'match_accuracy', 'valence', 'energy']]
-                display_df['match_accuracy'] = display_df['match_accuracy'].astype(str) + "%"
-                st.dataframe(display_df, use_container_width=True, hide_index=True)
-                
+                # Build a beautiful UI for each track
+                for track in playlist:
+                    col1, col2 = st.columns([1, 3])
+                    
+                    with col1:
+                        if track['album_art']:
+                            st.image(track['album_art'], use_column_width=True)
+                            
+                    with col2:
+                        st.markdown(f"### {track['title']}")
+                        st.markdown(f"**{track['artist']}**")
+                        st.write(f"*{track['reason']}*")
+                        
+                        if track['preview_url']:
+                            st.audio(track['preview_url'], format="audio/mp3")
+                        else:
+                            st.caption("No audio preview available for this specific track.")
+                            
+                        st.markdown(f"[Listen on Spotify]({track['spotify_url']})")
+                        
+                    st.divider()
+                    
         except Exception as e:
-            st.error(f"An error occurred: {e}. Check your API key and internet connection.")
+            st.error(f"An error occurred: {e}")
